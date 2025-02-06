@@ -28,6 +28,7 @@ import (
 	flag "github.com/spf13/pflag"
 	"go.uber.org/zap/zapcore"
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	ctrlrt "sigs.k8s.io/controller-runtime"
@@ -462,6 +463,22 @@ func parseReconcileFlagArgument(flagArgument string) (string, int, error) {
 		return "", 0, fmt.Errorf("invalid value in flag argument: value must be greater than 0")
 	}
 	return elements[0], value, nil
+}
+
+func (c *Config) ParseLabelSelector(selector string) (labels.Selector, error) {
+	// Trim spaces and check if the input is empty
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return labels.Nothing(), nil // Return an empty selector
+	}
+
+	// Use Kubernetes labels.Parse to generate a selector
+	labelSelector, err := labels.Parse(selector)
+	if err != nil {
+		return nil, fmt.Errorf("invalid label selector: %w", err)
+	}
+
+	return labelSelector, nil
 }
 
 // GetWatchNamespaces returns a slice of namespaces to watch for custom resource events.

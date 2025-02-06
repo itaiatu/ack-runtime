@@ -167,16 +167,16 @@ func (c *NamespaceCache) inWatchScope(namespace string, namespaceLabels map[stri
 			return true
 		}
 
-		// Split labelSelectorNamespace into individual key-value pairs (e.g., "a=b,c=d" -> {"a": "b", "c": "d"})
-		requiredLabels := parseLabelSelector(c.labelSelectorNamespace)
+		// // Split labelSelectorNamespace into individual key-value pairs (e.g., "a=b,c=d" -> {"a": "b", "c": "d"})
+		// requiredLabels := parseLabelSelector(c.labelSelectorNamespace)
 
-		// Check if all required labels exist in namespaceLabels and match
-		for key, expectedValue := range requiredLabels {
-			actualValue, exists := namespaceLabels[key]
-			if !exists || actualValue != expectedValue {
-				return false
-			}
-		}
+		// // Check if all required labels exist in namespaceLabels and match
+		// for key, expectedValue := range requiredLabels {
+		// 	actualValue, exists := namespaceLabels[key]
+		// 	if !exists || actualValue != expectedValue {
+		// 		return false
+		// 	}
+		// }
 
 		return true
 	}
@@ -196,7 +196,7 @@ func (c *NamespaceCache) approvedNamespace(namespace string, namespaceLabels map
 
 // Run instantiate a new shared informer for namespaces and runs it to begin processing items.
 func (c *NamespaceCache) Run(clientSet kubernetes.Interface, stopCh <-chan struct{}) {
-	c.log.V(1).Info("Starting namespace cache", "watchScope", c.watchScope, "ignored", c.ignored)
+	c.log.V(1).Info("Starting namespace cache", "watchScope", c.watchScope, "ignored", c.ignored, "labelSelectorNamespace", c.labelSelectorNamespace)
 	informer := informersv1.NewNamespaceInformer(
 		clientSet,
 		informerResyncPeriod,
