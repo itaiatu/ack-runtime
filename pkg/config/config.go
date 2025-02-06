@@ -37,11 +37,6 @@ import (
 	"github.com/aws-controllers-k8s/runtime/pkg/featuregate"
 	acktags "github.com/aws-controllers-k8s/runtime/pkg/tags"
 	ackutil "github.com/aws-controllers-k8s/runtime/pkg/util"
-
-	"context"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -472,16 +467,9 @@ func parseReconcileFlagArgument(flagArgument string) (string, int, error) {
 // GetWatchNamespaces returns a slice of namespaces to watch for custom resource events.
 // If the watchNamespace flag is empty, the function returns nil, which means that the
 // controller will watch for events in all namespaces.
+// TODO: Add info about LabelSelectorNamespace flag
 func (c *Config) GetWatchNamespaces() ([]string, error) {
-	namespaces, err := parseWatchNamespaceString(c.WatchNamespace)
-
-	// Check if flagLabelSelectorNamespace is not set
-	if c.LabelSelectorNamespace == "" {
-		return namespaces, err
-	}
-
-	// Filter namespaces based on label selector
-	return parseLabelSelectorNamespace(c.LabelSelectorNamespace)
+	return parseWatchNamespaceString(c.WatchNamespace)
 }
 
 // parseWatchNamespaceString parses the watchNamespace flag and returns a slice of namespaces
@@ -513,39 +501,6 @@ func parseWatchNamespaceString(namespace string) ([]string, error) {
 		visited[ns] = true
 	}
 	return namespaces, nil
-}
-
-// parseLabelSelectorNamespace parses the LabelSelectorNamespace flag and returns a slice of namespaces
-// to watch based on the label selector. The input string is expected to be a comma-separated list of
-// label selectors.
-//
-// When providing multiple label selectors, the labelSelectorNamespace string must not contain
-// spaces, empty namespaces, or duplicate namespaces.
-func parseLabelSelectorNamespace(labelSelectorNamespace string) ([]string, error) {
-	// TODO: Check if there is a better way to get the list of namespaces
-
-	// Create a k8s clientset to list namespaces based on the label selector
-	// and return the list of namespaces
-	clientSet, err := kubernetes.NewForConfig(ctrlrt.GetConfigOrDie())
-	if err != nil {
-		return nil, fmt.Errorf("unable to create k8s clientset: %v", err)
-	}
-
-	// Get the list of namespaces matching the label selector
-	namespaces, err := clientSet.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{
-		LabelSelector: labelSelectorNamespace,
-	})
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// Extract the namespace names from the list
-	var namespaceNames []string
-	for _, ns := range namespaces.Items {
-		namespaceNames = append(namespaceNames, ns.Name)
-	}
-
-	return namespaceNames, nil
 }
 
 // parseFeatureGates converts a raw string of feature gate settings into a FeatureGates structure.

@@ -68,6 +68,8 @@ type Config struct {
 	WatchScope []string
 	// Ignored is a list of namespaces to ignore
 	Ignored []string
+	// Label selectors for filtering namespaces
+	LabelSelectorNamespace string
 }
 
 // Caches is used to interact with the different caches
@@ -95,7 +97,7 @@ func New(log logr.Logger, config Config, features featuregate.FeatureGates) Cach
 	return Caches{
 		Accounts:   NewCARMMapCache(log),
 		Teams:      teams,
-		Namespaces: NewNamespaceCache(log, config.WatchScope, config.Ignored),
+		Namespaces: NewNamespaceCache(log, config.WatchScope, config.Ignored, config.LabelSelectorNamespace),
 	}
 }
 

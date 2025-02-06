@@ -97,15 +97,19 @@ type NamespaceCache struct {
 	// hasSynced is a function that will return true if namespace informer
 	// has received "at least" once the full list of the namespaces.
 	hasSynced func() bool
+	// labelSelectorNamespace is the label selector to filter namespaces
+	// to watch
+	labelSelectorNamespace string
 }
 
 // NewNamespaceCache instanciate a new NamespaceCache.
-func NewNamespaceCache(log logr.Logger, watchScope []string, ignored []string) *NamespaceCache {
+func NewNamespaceCache(log logr.Logger, watchScope []string, ignored []string, labelSelectorNamespace string) *NamespaceCache {
 	return &NamespaceCache{
-		log:            log.WithName("cache.namespace"),
-		namespaceInfos: make(map[string]*namespaceInfo),
-		ignored:        ignored,
-		watchScope:     watchScope,
+		log:                    log.WithName("cache.namespace"),
+		namespaceInfos:         make(map[string]*namespaceInfo),
+		ignored:                ignored,
+		watchScope:             watchScope,
+		labelSelectorNamespace: labelSelectorNamespace,
 	}
 }
 
@@ -119,11 +123,64 @@ func (c *NamespaceCache) isIgnoredNamespace(namespace string) bool {
 	return false
 }
 
+// parseLabelSelector parses a comma-separated label selector string into a map.
+func parseLabelSelector(selector string) map[string]string {
+	labels := make(map[string]string)
+
+	// Edge case: empty input
+	if selector == "" {
+		return labels
+	}
+
+	pairs := strings.Split(selector, ",")
+	for _, pair := range pairs {
+		// Trim spaces around key-value pairs
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue // Skip empty entries
+		}
+
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			// Skip invalid entries (e.g., "a" or "a=b=c")
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		if key == "" {
+			// Ignore empty keys (e.g., "=b")
+			continue
+		}
+
+		labels[key] = value // Overwrites if key appears multiple times
+	}
+
+	return labels
+}
+
 // inWatchScope returns true if the namespace is in the watch scope
-func (c *NamespaceCache) inWatchScope(namespace string) bool {
+func (c *NamespaceCache) inWatchScope(namespace string, namespaceLabels map[string]string) bool {
 	if len(c.watchScope) == 0 {
+		if c.labelSelectorNamespace == "" {
+			return true
+		}
+
+		// Split labelSelectorNamespace into individual key-value pairs (e.g., "a=b,c=d" -> {"a": "b", "c": "d"})
+		requiredLabels := parseLabelSelector(c.labelSelectorNamespace)
+
+		// Check if all required labels exist in namespaceLabels and match
+		for key, expectedValue := range requiredLabels {
+			actualValue, exists := namespaceLabels[key]
+			if !exists || actualValue != expectedValue {
+				return false
+			}
+		}
+
 		return true
 	}
+
 	for _, ns := range c.watchScope {
 		if namespace == ns {
 			return true
@@ -133,8 +190,8 @@ func (c *NamespaceCache) inWatchScope(namespace string) bool {
 }
 
 // approvedNamespace returns true if the namespace is not ignored and is in the watch scope
-func (c *NamespaceCache) approvedNamespace(namespace string) bool {
-	return !c.isIgnoredNamespace(namespace) && c.inWatchScope(namespace)
+func (c *NamespaceCache) approvedNamespace(namespace string, namespaceLabels map[string]string) bool {
+	return !c.isIgnoredNamespace(namespace) && c.inWatchScope(namespace, namespaceLabels)
 }
 
 // Run instantiate a new shared informer for namespaces and runs it to begin processing items.
@@ -151,21 +208,21 @@ func (c *NamespaceCache) Run(clientSet kubernetes.Interface, stopCh <-chan struc
 		AddFunc: func(obj interface{}) {
 			// It is guaranteed that the object is of type corev1.Namespace
 			ns := obj.(*corev1.Namespace)
-			if c.approvedNamespace(ns.ObjectMeta.Name) {
+			if c.approvedNamespace(ns.ObjectMeta.Name, ns.ObjectMeta.Labels) {
 				c.setNamespaceInfoFromK8sObject(ns)
 				c.log.V(1).Info("created namespace", "name", ns.ObjectMeta.Name)
 			}
 		},
 		UpdateFunc: func(orig, desired interface{}) {
 			ns := desired.(*corev1.Namespace)
-			if c.approvedNamespace(ns.ObjectMeta.Name) {
+			if c.approvedNamespace(ns.ObjectMeta.Name, ns.ObjectMeta.Labels) {
 				c.setNamespaceInfoFromK8sObject(ns)
 				c.log.V(1).Info("updated namespace", "name", ns.ObjectMeta.Name)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			ns := obj.(*corev1.Namespace)
-			if c.approvedNamespace(ns.ObjectMeta.Name) {
+			if c.approvedNamespace(ns.ObjectMeta.Name, ns.ObjectMeta.Labels) {
 				ns := obj.(*corev1.Namespace)
 				c.deleteNamespaceInfo(ns.ObjectMeta.Name)
 				c.log.V(1).Info("deleted namespace", "name", ns.ObjectMeta.Name)
